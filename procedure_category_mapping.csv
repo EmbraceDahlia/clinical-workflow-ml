@@ -1,0 +1,145 @@
+CODE,DESCRIPTION,CATEGORY,CONFIDENCE,MATCH_RULE,REVIEWED
+23426006,Measurement of respiratory function (procedure),instrument_test,medium,instrument procedure keyword,False
+40701008,Echocardiography (procedure),instrument_test,medium,instrument procedure keyword,False
+54550000,Seizure Count Cerebral Cortex Electroencephalogram (EEG),instrument_test,medium,instrument procedure keyword,False
+112790001,Nasal sinus endoscopy (procedure),instrument_test,medium,instrument procedure keyword,False
+127783003,Spirometry (procedure),instrument_test,medium,instrument procedure keyword,False
+173160006,Diagnostic fiberoptic bronchoscopy (procedure),instrument_test,medium,instrument procedure keyword,False
+180325003,Electrical cardioversion,instrument_test,medium,instrument procedure keyword,False
+433236007,Transthoracic echocardiography,instrument_test,medium,instrument procedure keyword,False
+14768001,Peripheral blood smear interpretation,lab_test,medium,laboratory procedure keyword,False
+31676001,Human immunodeficiency virus antigen test,lab_test,medium,laboratory procedure keyword,False
+44608003,Blood typing  RH typing,lab_test,medium,laboratory procedure keyword,False
+47758006,Hepatitis B Surface Antigen Measurement,lab_test,medium,laboratory procedure keyword,False
+65575008,Biopsy of prostate,lab_test,medium,laboratory procedure keyword,False
+76164006,Biopsy of colon,lab_test,medium,laboratory procedure keyword,False
+90226004,Cytopathology procedure  preparation of smear  genital source,lab_test,medium,laboratory procedure keyword,False
+90226004,Cytopathology procedure  preparation of smear  genital source (procedure),lab_test,medium,laboratory procedure keyword,False
+104091002,Hemoglobin / Hematocrit / Platelet count,lab_test,medium,laboratory procedure keyword,False
+104326007,Measurement of Varicella-zoster virus antibody,lab_test,medium,laboratory procedure keyword,False
+104375008,Hepatitis C antibody test,lab_test,medium,laboratory procedure keyword,False
+117010004,Urine culture,lab_test,medium,laboratory procedure keyword,False
+117015009,Throat culture (procedure),lab_test,medium,laboratory procedure keyword,False
+118001005,Streptococcus pneumoniae group B antigen test,lab_test,medium,laboratory procedure keyword,False
+122548005,Biopsy of breast (procedure),lab_test,medium,laboratory procedure keyword,False
+167271000,Urine protein test,lab_test,medium,laboratory procedure keyword,False
+167995008,Sputum microscopy (procedure),lab_test,medium,laboratory procedure keyword,False
+169673001,Antenatal RhD antibody screening,lab_test,medium,laboratory procedure keyword,False
+252160004,Standard pregnancy test,lab_test,medium,laboratory procedure keyword,False
+268556000,Urine screening for glucose,lab_test,medium,laboratory procedure keyword,False
+269911007,Sputum examination (procedure),lab_test,medium,laboratory procedure keyword,False
+275833003,Alpha-fetoprotein test,lab_test,medium,laboratory procedure keyword,False
+310861008,Chlamydia antigen test,lab_test,medium,laboratory procedure keyword,False
+395123002,Urine screening test for diabetes,lab_test,medium,laboratory procedure keyword,False
+396487001,Sentinel lymph node biopsy (procedure),lab_test,medium,laboratory procedure keyword,False
+432231006,Fine needle aspiration biopsy of lung (procedure),lab_test,medium,laboratory procedure keyword,False
+5880005,Physical examination,medical_exam,medium,examination procedure keyword,False
+5880005,Physical examination following birth,medical_exam,medium,examination procedure keyword,False
+5880005,Physical examination of mother,medical_exam,medium,examination procedure keyword,False
+162676008,Brief general examination (procedure),medical_exam,medium,examination procedure keyword,False
+398171003,Hearing examination (procedure),medical_exam,medium,examination procedure keyword,False
+410006001,Digital examination of rectum,medical_exam,medium,examination procedure keyword,False
+415300000,Review of systems (procedure),medical_exam,medium,examination procedure keyword,False
+1225002,Upper arm X-ray,other,low,no reviewed category rule matched,False
+5880005,Physical exam following abortion,other,low,no reviewed category rule matched,False
+10383002,Counseling for termination of pregnancy,other,low,no reviewed category rule matched,False
+11466000,Cesarean section,other,low,no reviewed category rule matched,False
+15081005,Pulmonary rehabilitation (regime/therapy),other,low,no reviewed category rule matched,False
+18286008,Catheter ablation of tissue of heart,other,low,no reviewed category rule matched,False
+18946005,Epidural anesthesia,other,low,no reviewed category rule matched,False
+19490002,Ankle X-ray,other,low,no reviewed category rule matched,False
+22523008,Vasectomy,other,low,no reviewed category rule matched,False
+24623002,Screening mammography (procedure),other,low,no reviewed category rule matched,False
+28163009,Skin test for tuberculosis,other,low,no reviewed category rule matched,False
+31208007,Medical induction of labor,other,low,no reviewed category rule matched,False
+33195004,Teleradiotherapy procedure (procedure),other,low,no reviewed category rule matched,False
+35025007,Manual pelvic examination (procedure),other,low,no reviewed category rule matched,False
+43060002,Intravenous injection (procedure),other,low,no reviewed category rule matched,False
+43075005,Partial resection of colon,other,low,no reviewed category rule matched,False
+46706006,Replacement of contraceptive intrauterine device,other,low,no reviewed category rule matched,False
+51116004,RhD passive immunization,other,low,no reviewed category rule matched,False
+60027007,X-ray or wrist,other,low,no reviewed category rule matched,False
+65200003,Insertion of intrauterine contraceptive device,other,low,no reviewed category rule matched,False
+65546002,Extraction of wisdom tooth,other,low,no reviewed category rule matched,False
+65588006,Premature birth of newborn,other,low,no reviewed category rule matched,False
+66348005,Childbirth,other,low,no reviewed category rule matched,False
+68254000,Removal of intrauterine device,other,low,no reviewed category rule matched,False
+69031006,Excision of breast tissue (procedure),other,low,no reviewed category rule matched,False
+71651007,Mammography (procedure),other,low,no reviewed category rule matched,False
+73761001,Colonoscopy,other,low,no reviewed category rule matched,False
+74016001,Knee X-ray,other,low,no reviewed category rule matched,False
+76601001,Intramuscular injection,other,low,no reviewed category rule matched,False
+80146002,Appendectomy,other,low,no reviewed category rule matched,False
+85548006,Episiotomy,other,low,no reviewed category rule matched,False
+88039007,Transplant of lung (procedure),other,low,no reviewed category rule matched,False
+90470006,Prostatectomy,other,low,no reviewed category rule matched,False
+91602002,Thoracentesis (procedure),other,low,no reviewed category rule matched,False
+104435004,Screening for occult blood in feces (procedure),other,low,no reviewed category rule matched,False
+108290001,Radiation oncology AND/OR radiotherapy (procedure),other,low,no reviewed category rule matched,False
+165829005,Gonorrhea infection test,other,low,no reviewed category rule matched,False
+168594001,Clavicle X-ray,other,low,no reviewed category rule matched,False
+169230002,Ultrasound scan for fetal viability,other,low,no reviewed category rule matched,False
+169553002,Insertion of subcutaneous contraceptive,other,low,no reviewed category rule matched,False
+169690007,Rubella screening,other,low,no reviewed category rule matched,False
+171207006,Depression screening,other,low,no reviewed category rule matched,False
+171231001,Asthma screening,other,low,no reviewed category rule matched,False
+177157003,Spontaneous breech delivery,other,low,no reviewed category rule matched,False
+180207008,Intravenous blood transfusion of packed cells (procedure),other,low,no reviewed category rule matched,False
+180256009,Subcutaneous immunotherapy,other,low,no reviewed category rule matched,False
+225158009,Auscultation of the fetal heart,other,low,no reviewed category rule matched,False
+228557008,Cognitive and behavioral therapy,other,low,no reviewed category rule matched,False
+232717009,Coronary artery bypass grafting,other,low,no reviewed category rule matched,False
+234262008,Excision of axillary lymph node (procedure),other,low,no reviewed category rule matched,False
+236931002,Methotrexate injection into tubal pregnancy,other,low,no reviewed category rule matched,False
+236974004,Instrumental delivery,other,low,no reviewed category rule matched,False
+237001001,Augmentation of labor,other,low,no reviewed category rule matched,False
+241055006,Mammogram - symptomatic (procedure),other,low,no reviewed category rule matched,False
+241615005,Magnetic resonance imaging of breast (procedure),other,low,no reviewed category rule matched,False
+265764009,Renal dialysis (procedure),other,low,no reviewed category rule matched,False
+268425006,Pelvis X-ray,other,low,no reviewed category rule matched,False
+269828009,Syphilis infection test,other,low,no reviewed category rule matched,False
+271442007,Fetal anatomy study,other,low,no reviewed category rule matched,False
+274031008,Rectal polypectomy,other,low,no reviewed category rule matched,False
+274474001,Bone immobilization,other,low,no reviewed category rule matched,False
+274804006,Evaluation of uterine fundal height,other,low,no reviewed category rule matched,False
+287664005,Bilateral tubal ligation,other,low,no reviewed category rule matched,False
+288086009,Suture open wound,other,low,no reviewed category rule matched,False
+301807007,Removal of subcutaneous contraceptive,other,low,no reviewed category rule matched,False
+305428000,Admission to orthopedic department,other,low,no reviewed category rule matched,False
+305433001,Admission to trauma surgery department,other,low,no reviewed category rule matched,False
+311791003,Information gathering (procedure),other,low,no reviewed category rule matched,False
+312681000,Bone density scan (procedure),other,low,no reviewed category rule matched,False
+313191000,Injection of adrenaline,other,low,no reviewed category rule matched,False
+367336001,Chemotherapy (procedure),other,low,no reviewed category rule matched,False
+384700001,Injection of tetanus antitoxin,other,low,no reviewed category rule matched,False
+385798007,Radiation therapy care (regime/therapy),other,low,no reviewed category rule matched,False
+386394001,Pregnancy termination care,other,low,no reviewed category rule matched,False
+387607004,Construction of diverting colostomy,other,low,no reviewed category rule matched,False
+387685009,Surgical manipulation of shoulder joint,other,low,no reviewed category rule matched,False
+392021009,Lumpectomy of breast (procedure),other,low,no reviewed category rule matched,False
+395142003,Allergy screening test,other,low,no reviewed category rule matched,False
+399014008,Vaccination for diphtheria  pertussis  and tetanus,other,low,no reviewed category rule matched,False
+399208008,Chest X-ray,other,low,no reviewed category rule matched,False
+399208008,Plain chest X-ray,other,low,no reviewed category rule matched,False
+399208008,Plain chest X-ray (procedure),other,low,no reviewed category rule matched,False
+415070008,Percutaneous coronary intervention,other,low,no reviewed category rule matched,False
+418891003,Computed tomography of chest and abdomen,other,low,no reviewed category rule matched,False
+430193006,Medication Reconciliation (procedure),other,low,no reviewed category rule matched,False
+433112001,Percutaneous mechanical thrombectomy of portal vein using fluoroscopic guidance,other,low,no reviewed category rule matched,False
+433114000,Human epidermal growth factor receptor 2 gene detection by immunohistochemistry (procedure),other,low,no reviewed category rule matched,False
+434158009,Transthoracic three dimensional ultrasonography of heart (procedure),other,low,no reviewed category rule matched,False
+434363004,Human epidermal growth factor receptor 2 gene detection by fluorescence in situ hybridization (procedure),other,low,no reviewed category rule matched,False
+443497002,Excision of sentinel lymph node (procedure),other,low,no reviewed category rule matched,False
+443529005,Screening for chromosomal aneuploidy in prenatal amniotic fluid,other,low,no reviewed category rule matched,False
+445912000,Excision of fallopian tube and surgical removal of ectopic pregnancy,other,low,no reviewed category rule matched,False
+447365002,Insertion of biventricular implantable cardioverter defibrillator,other,low,no reviewed category rule matched,False
+698354004,Magnetic resonance imaging for measurement of brain volume (procedure),other,low,no reviewed category rule matched,False
+699253003,Surgical manipulation of joint of knee,other,low,no reviewed category rule matched,False
+703423002,Combined chemotherapy and radiation therapy (procedure),other,low,no reviewed category rule matched,False
+714812005,Induced termination of pregnancy,other,low,no reviewed category rule matched,False
+1571000087109,Ultrasonography of bilateral breasts (procedure),other,low,no reviewed category rule matched,False
+112001000119100,positive screening for PHQ-9,other,low,no reviewed category rule matched,False
+112001000119100,positive screening for depression on phq9,other,low,no reviewed category rule matched,False
+112011000119102,negative screening for depression on phq9,other,low,no reviewed category rule matched,False
+16335031000119103,High resolution computed tomography of chest without contrast (procedure),other,low,no reviewed category rule matched,False
+183856001,Referral to hypertension clinic,specialist_review,medium,specialist procedure keyword,False

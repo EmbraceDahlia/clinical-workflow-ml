@@ -1,0 +1,28 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local tooling
+.vscode/
+.python-version
+*.egg-info/
+
+# Generated data and model artifacts
+model_table.csv
+models/
+reports/
+*.joblib
+*.pkl
+
+# Notebooks and experiment outputs
+.ipynb_checkpoints/
+*.html
+
+# Logs and local configuration
+*.log
+.env
+.env.*
+!.env.example
