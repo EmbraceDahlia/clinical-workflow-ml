@@ -203,10 +203,12 @@ python -m workflow_ml.serving
 streamlit run app.py
 ```
 
-With the ensemble selected, **New application** has a **Synthetic patient** tab.
-It lists the synthetic patients that were held out of training, scores the chosen
+**New application** has a **Synthetic patient** tab for either model. It lists
+the synthetic patients that were held out of training, scores the chosen
 encounter live, and the review page shows what was actually recorded in the
-following 30 days. **Manual entry** also works with the ensemble: the dated
+following 30 days. When both models are exported, `src/export_model.py` holds
+out the same patients as the ensemble bundle (export the bundle first), and the
+review page then shows both models' answers side by side. **Manual entry** also works with the ensemble: the dated
 history is converted to Synthea-style records and passed through the same
 feature builder, but such short histories are outside what the model was
 trained on, so treat those scores as illustrative.
