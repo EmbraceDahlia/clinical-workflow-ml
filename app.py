@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 import re
@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 from src.config import DATA_DIR, MODEL_ARTIFACT_PATH, MODEL_TABLE_PATH, TARGET_COLUMNS
 from src.demo_examples import EVALUATION_DATE, EXAMPLES
 from src.history_agent import extract_history_records, history_model_name
-from src.manual_features import build_model_features
+from src.longitudinal_agent import extract_longitudinal_features
 from src.model_artifact import load_model_artifact, predict_workflows
 
 try:
@@ -151,6 +151,14 @@ def available_models() -> list[str]:
         models.append(BASELINE)
     return models
 
+
+
+def print_model_inputs(model_name: str, inputs: dict[str, object]) -> None:
+    width = max(len(str(name)) for name in inputs)
+    print(f"\n=== Parameters passed to {model_name} ({len(inputs)}) ===", flush=True)
+    for name, value in inputs.items():
+        print(f"{str(name):<{width}} : {value}", flush=True)
+    print(flush=True)
 
 
 def safe_extraction_error(error: Exception) -> str:
@@ -538,6 +546,7 @@ def render_manual_intake(model_name: str) -> None:
             with st.status("Generating workflow suggestions...", expanded=True) as status:
                 try:
                     history_records = []
+                    longitudinal = {}
                     if history_text.strip():
                         step = "Step 1/4: Checking OpenAI configuration"
                         st.write(step)
@@ -546,15 +555,31 @@ def render_manual_intake(model_name: str) -> None:
 
                         step = "Step 2/4: Extracting history with the OpenAI agent"
                         st.write(f"{step} ({history_model_name()})")
-                        extracted = extract_history_records(
-                            history_text,
-                            model=history_model_name(),
-                            evaluation_date=evaluation_date,
-                        )["records"]
-                        history_records = [r for r in extracted if r["Record date"] is not None]
-                        st.write(
-                            f"Extracted {len(extracted)} records; {len(history_records)} have usable dates."
-                        )
+                        if model_name == ENSEMBLE:
+                            extracted = extract_history_records(
+                                history_text,
+                                model=history_model_name(),
+                                evaluation_date=evaluation_date,
+                            )["records"]
+                            history_records = [r for r in extracted if r["Record date"] is not None]
+                            st.write(
+                                f"Extracted {len(extracted)} records; {len(history_records)} have usable dates."
+                            )
+                        else:
+                            extraction = extract_longitudinal_features(
+                                history_text,
+                                evaluation_date,
+                                model=history_model_name(),
+                            )
+                            longitudinal = extraction["features"]
+                            st.write(
+                                f"Extracted {len(extraction['events'])} events and {len(longitudinal)} longitudinal fields."
+                            )
+                            if extraction["mismatches"]:
+                                st.write(
+                                    f"Corrected {len(extraction['mismatches'])} agent arithmetic errors: "
+                                    + ", ".join(extraction["mismatches"])
+                                )
                     else:
                         st.write("No medical history text entered; skipping extraction.")
 
@@ -567,6 +592,7 @@ def render_manual_intake(model_name: str) -> None:
                         )
                         step = "Step 4/4: Running the prediction model"
                         st.write(step)
+                        print_model_inputs(model_name, model_features.to_dict())
                         predictions = ensemble_predictions(prediction, model_features, bundle)
                         feature_values = {
                             **{name: str(value) for name, value in profile.items()},
@@ -575,17 +601,17 @@ def render_manual_intake(model_name: str) -> None:
                         }
                     else:
                         artifact = get_model()
-                        feature_values = build_model_features(
-                            current_features,
-                            history_records,
-                            evaluation_date,
-                            artifact["feature_columns"],
-                        )
+                        merged = current_features | longitudinal
+                        feature_values = {
+                            column: merged.get(column, -1 if column.startswith("days_since") else 0)
+                            for column in artifact["feature_columns"]
+                        }
                         feature_values["patient_total_encounters"] = max(
                             int(feature_values["patient_total_encounters"]), prior_total_encounters
                         )
                         step = "Step 4/4: Running the prediction model"
                         st.write(step)
+                        print_model_inputs(model_name, feature_values)
                         predictions = baseline_predictions(feature_values, artifact)
 
                     case = make_case(
