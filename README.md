@@ -180,6 +180,47 @@ The input must include the model's longitudinal history features; the model
 does not derive those history features from raw EHR records. These predictions
 are for a synthetic-data demonstration, not clinical decision-making.
 
+## Run the Showcase App
+
+Install project requirements, create the synthetic feature table and model
+artifact if they are not already present, then launch the local app:
+
+```powershell
+python -m pip install -r requirements.txt
+python src\build_model_table.py
+python src\export_model.py
+streamlit run app.py
+```
+
+To enable background free-text extraction, configure the API key and model in
+the same PowerShell session before starting the app:
+
+```powershell
+$env:OPENAI_API_KEY = "<your API key>"
+$env:HISTORY_EXTRACTION_MODEL = "gpt-4.1-mini"
+streamlit run app.py
+```
+
+The app always uses manual intake: enter applicant/evaluation details, then add
+dated encounters, allergies, conditions, immunizations, procedures, imaging,
+medications, and observations in the history grid. It derives the model's
+7/30/90/180-day counts and recency features from those records. Optional record
+details are shown to the reviewer but are not analyzed by the model.
+When free text is provided, the main **Generate workflow suggestions** action
+starts extraction in the background. Review and add or discard the returned
+draft records, then submit **Generate workflow suggestions** again to run the
+classifier. Drafts include source quotes and model-reported extraction
+confidence. Relative or ambiguous dates are left blank for the user to resolve.
+The free text is sent to the configured OpenAI model only after that action is
+started; use synthetic text for this showcase.
+
+The remaining steps are model-score review, an underwriter decision, and
+clinician review requests for approved categories. Cases are held only in
+Streamlit session state, so they are not persistent or shared across users.
+Feature importances shown during review are global training-set signals, not
+case-specific explanations. Use synthetic records only; the app does not create
+medical orders or make insurance eligibility decisions.
+
 ## Future Work
 
 Future experiments will investigate imbalance-aware methods to improve the
