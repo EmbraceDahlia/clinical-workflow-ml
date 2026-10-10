@@ -7,19 +7,22 @@ Synthea EHR data in `../data`). The target is identical to the original pipeline
 
 ## Setup
 
+All packages are listed in one place, `../requirements.txt`. From the repository root:
+
 ```bash
-cd workflow_v2
-uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -e ".[dev]"
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m ipykernel install --user --name workflow-v2 --display-name "Python (workflow-v2)"
 ```
 
 ## Run
 
+From the repository root:
+
 ```bash
-.venv/bin/pytest -q                      # label parity + leakage tests
-.venv/bin/python -m workflow_ml.train    # train everything, write artifacts/reports/
-.venv/bin/jupyter lab notebooks/         # step-by-step notebooks, kernel "Python (workflow-v2)"
+.venv/bin/pytest workflow_v2 -q                    # label parity + leakage tests
+.venv/bin/python -m workflow_ml.train              # train everything, write workflow_v2/artifacts/reports/
+.venv/bin/jupyter lab workflow_v2/notebooks/       # step-by-step notebooks, kernel "Python (workflow-v2)"
 ```
 
 The first `train` run takes about 15 minutes on an Apple M1; later runs reuse cached scores.
@@ -28,8 +31,8 @@ Add `--refresh` to rebuild the features and retrain.
 ## Serve the model
 
 ```bash
-.venv/bin/python -m workflow_ml.serving   # writes artifacts/model/workflow_model.joblib (about 4 minutes)
-.venv/bin/streamlit run ../app.py         # the showcase app, with both models selectable
+.venv/bin/python -m workflow_ml.serving   # writes workflow_v2/artifacts/model/workflow_model.joblib (about 4 minutes)
+.venv/bin/streamlit run app.py            # the showcase app, with both models selectable
 ```
 
 The bundle is trained on four patient folds; the fifth is kept out so the app can
