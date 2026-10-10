@@ -44,6 +44,24 @@ class AppTests(unittest.TestCase):
         app.sidebar.radio[0].set_value("Underwriter review")
         self.assertFalse(app.run().exception)
 
+    @unittest.skipUnless(
+        BUNDLE_PATH and BUNDLE_PATH.exists() and MODEL_ARTIFACT_PATH.exists(), "needs both models"
+    )
+    def test_original_model_scores_a_held_out_patient_next_to_the_ensemble(self):
+        app = open_page("Original", "New application")
+        next(button for button in app.button if button.key == "demo_generate").click().run()
+        self.assertFalse(app.exception)
+
+        case = app.session_state["applications"][0]
+        self.assertTrue(case["model"].startswith("Original"))
+        self.assertEqual(set(case["actual"]), set(case["predictions"]))
+        (other_name, other_predictions), = case["comparison"].items()
+        self.assertTrue(other_name.startswith("Ensemble"))
+        self.assertEqual(set(other_predictions), set(case["predictions"]))
+
+        app.sidebar.radio[0].set_value("Underwriter review")
+        self.assertFalse(app.run().exception)
+
     @unittest.skipUnless(BUNDLE_PATH and BUNDLE_PATH.exists(), "ensemble bundle not exported")
     def test_ensemble_scores_a_manual_application(self):
         app = submit_manual_application(open_page("Ensemble", "New application"))

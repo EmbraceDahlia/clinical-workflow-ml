@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import joblib
@@ -22,17 +22,27 @@ from src.train_baselines import train_model
 def train_and_export_model(
     table_path: Path,
     output_path: Path = MODEL_ARTIFACT_PATH,
+    holdout_patients: Iterable[str] | None = None,
 ) -> pd.DataFrame:
-    """Train, evaluate, and export the longitudinal Random Forest model."""
+    """Train, evaluate, and export the longitudinal Random Forest model.
+
+    ``holdout_patients`` fixes the test patients, so another model that kept the same
+    patients out of training can be compared on them. The bundle records its held-out
+    patients either way.
+    """
     from src.data_split import patient_group_split
     from src.config import RANDOM_STATE
 
     df = pd.read_csv(table_path)
-    train_val_df, test_df = patient_group_split(
-        df,
-        target_col="medical_exam",
-        random_state=RANDOM_STATE,
-    )
+    if holdout_patients is None:
+        train_val_df, test_df = patient_group_split(
+            df,
+            target_col="medical_exam",
+            random_state=RANDOM_STATE,
+        )
+    else:
+        held_out = df["patient_id"].isin(set(holdout_patients))
+        train_val_df, test_df = df[~held_out].copy(), df[held_out].copy()
     train_df, val_df = patient_group_split(
         train_val_df,
         target_col="medical_exam",
@@ -85,6 +95,7 @@ def train_and_export_model(
         "feature_columns": feature_columns,
         "target_columns": TARGET_COLUMNS,
         "thresholds": thresholds,
+        "holdout_patients": sorted(test_df["patient_id"].unique()),
         "preprocessor": final_preprocessor,
         "model": final_model,
     }

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.config import DATA_DIR, MODEL_ARTIFACT_PATH
+from src.config import DATA_DIR, MODEL_ARTIFACT_PATH, MODEL_TABLE_PATH, TARGET_COLUMNS
 from src.demo_examples import EVALUATION_DATE, EXAMPLES
 from src.history_agent import extract_history_records, history_model_name
 from src.manual_features import build_model_features
@@ -29,6 +29,8 @@ except ImportError:  # without the workflow_v2 package the app still runs on the
 
 ENSEMBLE = "Ensemble v2 · mean F1 0.789"
 BASELINE = "Original Random Forest · mean F1 0.536"
+SHORT_NAME = {ENSEMBLE: "Ensemble v2", BASELINE: "Original"}
+TARGETS = list(TARGET_COLUMNS)
 
 
 st.set_page_config(
@@ -84,17 +86,61 @@ def get_ensemble():
     return load_bundle(BUNDLE_PATH)
 
 
-@st.cache_resource(show_spinner="Scoring the synthetic patients the model has never seen...")
-def get_demo_encounters() -> pd.DataFrame:
-    """Features, live ensemble predictions and recorded outcomes for the held-out patients."""
+def _with_suggestion_flag(demo: pd.DataFrame) -> pd.DataFrame:
+    demo["suggested"] = demo[[f"{target}_predicted" for target in TARGETS]].any(axis=1)
+    return demo.set_index("encounter_id")
+
+
+@st.cache_resource(show_spinner="Scoring the held-out synthetic patients with the ensemble...")
+def ensemble_demo() -> pd.DataFrame:
+    """Held-out patients' encounters with features, live ensemble predictions and outcomes."""
     bundle = get_ensemble()
     table = load_table()
     rows = table.index[table["patient_id"].isin(bundle.demo_patients)].to_numpy()
     demo = pd.concat([table.iloc[rows], bundle.predict(table, rows)], axis=1)
     encounter_types = bundle.vocabulary.categories["enc_type"]
     demo["encounter_type"] = [encounter_types[code] for code in demo["enc_type"]]
-    demo["suggested"] = demo[[f"{label}_predicted" for label in LABELS]].any(axis=1)
-    return demo
+    return _with_suggestion_flag(demo)
+
+
+@st.cache_resource(show_spinner="Scoring the held-out synthetic patients with the original model...")
+def baseline_demo() -> pd.DataFrame:
+    """The same view for the original model, on the patients it kept out of training."""
+    artifact = get_model()
+    table = pd.read_csv(MODEL_TABLE_PATH)
+    table = table[table["patient_id"].isin(artifact.get("holdout_patients", []))].reset_index(drop=True)
+    demo = pd.concat([table, predict_workflows(table, artifact)], axis=1)
+    descriptions = pd.read_csv(DATA_DIR / "encounters.csv", usecols=["Id", "DESCRIPTION"])
+    demo["encounter_type"] = demo["encounter_id"].map(descriptions.set_index("Id")["DESCRIPTION"])
+    demo["t"] = pd.to_datetime(demo["INDEX_DATE"], utc=True)
+    demo = demo.rename(columns={"age_at_encounter": "age", "patient_total_encounters": "n_previous"})
+    return _with_suggestion_flag(demo.sort_values(["patient_id", "t"]))
+
+
+def demo_encounters(model_name: str) -> pd.DataFrame | None:
+    """Held-out encounters scored by `model_name`, or None when that is not possible here."""
+    if model_name not in available_models():
+        return None
+    if model_name == ENSEMBLE:
+        return ensemble_demo()
+    if not MODEL_TABLE_PATH.exists() or not get_model().get("holdout_patients"):
+        return None
+    return baseline_demo()
+
+
+def demo_predictions(model_name: str, encounter: pd.Series) -> dict[str, dict[str, object]]:
+    if model_name == ENSEMBLE:
+        return ensemble_predictions(encounter, encounter, get_ensemble())
+    artifact = get_model()
+    return {
+        target: {
+            "score": float(encounter[f"{target}_score"]),
+            "threshold": float(artifact["thresholds"][target]),
+            "proposed": bool(encounter[f"{target}_predicted"]),
+            "signals": global_signals(artifact, target),
+        }
+        for target in TARGETS
+    }
 
 
 def available_models() -> list[str]:
@@ -266,6 +312,13 @@ def render_manual_inputs() -> tuple[dict[str, object], str]:
     )
 
 
+def global_signals(artifact: dict[str, object], target: str) -> list[str]:
+    return [
+        f"{name.replace('_', ' ')} ({importance:.0%})"
+        for name, importance in get_top_signals(artifact, target)
+    ]
+
+
 def baseline_predictions(
     features: dict[str, object], artifact: dict[str, object]
 ) -> dict[str, dict[str, object]]:
@@ -275,10 +328,7 @@ def baseline_predictions(
             "score": float(prediction[f"{target}_score"]),
             "threshold": float(artifact["thresholds"][target]),
             "proposed": bool(prediction[f"{target}_predicted"]),
-            "signals": [
-                f"{name.replace('_', ' ')} ({importance:.0%})"
-                for name, importance in get_top_signals(artifact, target)
-            ],
+            "signals": global_signals(artifact, target),
         }
         for target in artifact["target_columns"]
     }
@@ -305,6 +355,7 @@ def make_case(
     features: dict[str, object],
     history_records: list[dict[str, object]],
     actual: dict[str, bool] | None = None,
+    comparison: dict[str, dict[str, dict[str, object]]] | None = None,
 ) -> dict[str, object]:
     return {
         "id": uuid.uuid4().hex,
@@ -315,6 +366,7 @@ def make_case(
         "history_records": history_records,
         "predictions": predictions,
         "actual": actual,
+        "comparison": comparison or {},
         "status": "Awaiting underwriter review",
         "decision_note": "",
     }
@@ -362,14 +414,21 @@ def render_overview() -> None:
 
 
 def render_demo_intake(model_name: str) -> None:
-    """Pick a synthetic patient the ensemble never trained on and score one of their encounters."""
-    bundle = get_ensemble()
-    demo = get_demo_encounters()
+    """Pick a synthetic patient the selected model never trained on and score one encounter."""
+    demo = demo_encounters(model_name)
+    if demo is None:
+        st.info(
+            "The original model has no record of which patients it kept out of training. "
+            "Run `python src/build_model_table.py` and `python src/export_model.py` again to enable this tab."
+        )
+        return
+    other_name = next((name for name in available_models() if name != model_name), None)
+    other = demo_encounters(other_name) if other_name else None
+
     st.caption(
         f"{demo['patient_id'].nunique()} synthetic patients were held out of training. "
         "The model scores them live, and the review page shows what was actually recorded afterwards."
     )
-
     visits = demo.groupby("patient_id").size()
     patient = st.selectbox(
         "Synthetic patient",
@@ -383,13 +442,13 @@ def render_demo_intake(model_name: str) -> None:
         st.info("The model suggests no workflow for this patient. Turn the filter off or pick another patient.")
         return
 
-    position = st.selectbox(
+    encounter_id = st.selectbox(
         "Evaluation encounter",
         encounters.index,
         index=len(encounters) - 1,
         format_func=lambda row: f"{demo.at[row, 't']:%Y-%m-%d} · {demo.at[row, 'encounter_type']}",
     )
-    encounter = demo.loc[position]
+    encounter = demo.loc[encounter_id]
     earlier = demo[(demo["patient_id"] == patient) & (demo["t"] < encounter["t"])].tail(6)
     left, right = st.columns([1, 2])
     left.metric("Age at evaluation", f"{encounter['age']:.0f}")
@@ -402,10 +461,13 @@ def render_demo_intake(model_name: str) -> None:
     )
 
     if st.button("Generate workflow suggestions", type="primary", width="stretch", key="demo_generate"):
+        comparison = {}
+        if other is not None and encounter_id in other.index:
+            comparison[other_name] = demo_predictions(other_name, other.loc[encounter_id])
         case = make_case(
             f"DEMO-{patient[:6]}-{encounter['t']:%Y%m%d}",
             model_name,
-            ensemble_predictions(encounter, encounter, bundle),
+            demo_predictions(model_name, encounter),
             {
                 "patient": patient[:8],
                 "evaluation date": f"{encounter['t']:%Y-%m-%d}",
@@ -414,7 +476,8 @@ def render_demo_intake(model_name: str) -> None:
                 "earlier encounters": f"{encounter['n_previous']:.0f}",
             },
             [],
-            actual={label: bool(encounter[label]) for label in LABELS},
+            actual={target: bool(encounter[target]) for target in TARGETS},
+            comparison=comparison,
         )
         cases().insert(0, case)
         st.success(f"Application {case['reference']} is ready for underwriter review.")
@@ -425,17 +488,15 @@ def render_intake(model_name: str) -> None:
     st.caption(f"Model: {model_name}")
     st.warning("Showcase only: use synthetic data. Do not enter real policyholder identifiers or health information.")
 
-    if model_name == ENSEMBLE:
-        demo_tab, manual_tab = st.tabs(["Synthetic patient", "Manual entry"])
-        with demo_tab:
-            render_demo_intake(model_name)
-        with manual_tab:
+    demo_tab, manual_tab = st.tabs(["Synthetic patient", "Manual entry"])
+    with demo_tab:
+        render_demo_intake(model_name)
+    with manual_tab:
+        if model_name == ENSEMBLE:
             st.caption(
                 "Hand-entered histories are much shorter than the records the model was trained on, "
                 "so treat these scores as illustrative."
             )
-            render_manual_intake(model_name)
-    else:
         render_manual_intake(model_name)
 
 
@@ -543,29 +604,40 @@ def render_manual_intake(model_name: str) -> None:
                     st.success(f"Application {case['reference']} is ready for underwriter review.")
 
 
+def _outcome(suggested: bool, happened: bool) -> str:
+    if suggested == happened:
+        return "Correct"
+    return "Missed" if happened else "False alarm"
+
+
 def render_scores(case: dict[str, object]) -> None:
-    """All four categories at a glance; for synthetic patients, also what was recorded afterwards."""
+    """All four categories at a glance; synthetic patients also show the recorded outcome
+    and, when both models held the patient out, the other model's answer."""
     actual = case.get("actual")
+    answers = {case["model"]: case["predictions"], **case.get("comparison", {})}
+    several = len(answers) > 1
     rows = []
-    for label, result in case["predictions"].items():
-        row = {
-            "Workflow": WORKFLOW_INFO[label]["title"],
-            "Model score": round(result["score"], 3),
-            "Threshold": round(result["threshold"], 3),
-            "Model suggests": "Yes" if result["proposed"] else "No",
-        }
+    for label in case["predictions"]:
+        row = {"Workflow": WORKFLOW_INFO[label]["title"]}
+        for model_name, predictions in answers.items():
+            prefix = f"{SHORT_NAME[model_name]}: " if several else ""
+            result = predictions[label]
+            row[f"{prefix}score / threshold"] = f"{result['score']:.2f} / {result['threshold']:.2f}"
+            row[f"{prefix}suggests"] = "Yes" if result["proposed"] else "No"
         if actual is not None:
-            happened = actual[label]
-            row["Recorded within 30 days"] = "Yes" if happened else "No"
-            row["Outcome"] = (
-                "Correct" if happened == result["proposed"]
-                else "Missed" if happened else "False alarm"
-            )
+            row["Recorded within 30 days"] = "Yes" if actual[label] else "No"
+            for model_name, predictions in answers.items():
+                prefix = f"{SHORT_NAME[model_name]}: " if several else ""
+                row[f"{prefix}outcome"] = _outcome(predictions[label]["proposed"], actual[label])
         rows.append(row)
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+
     if actual is not None:
-        correct = sum(actual[label] == result["proposed"] for label, result in case["predictions"].items())
-        st.caption(f"{correct} of {len(rows)} categories match what was recorded for this synthetic patient.")
+        totals = [
+            f"{SHORT_NAME[model_name]} {sum(predictions[label]['proposed'] == actual[label] for label in actual)} of {len(actual)}"
+            for model_name, predictions in answers.items()
+        ]
+        st.caption("Categories matching what was recorded for this synthetic patient: " + ", ".join(totals) + ".")
 
 
 def render_review() -> None:
