@@ -199,6 +199,123 @@ class PipelineTests(unittest.TestCase):
         summary = compare_models(results)
         self.assertEqual(list(summary.columns), ["model", "mean_f1", "mean_precision", "mean_recall"])
 
+    def test_manual_history_records_generate_lookback_and_recency_features(self):
+        from datetime import date, timedelta
+
+        from src.manual_features import RECORD_TYPE_TO_FEATURE, build_model_features
+
+        evaluation_date = date(2025, 6, 1)
+        records = [
+            {"Record type": "Condition", "Record date": evaluation_date - timedelta(days=7)},
+            {"Record type": "Condition", "Record date": evaluation_date - timedelta(days=20)},
+            {"Record type": "Condition", "Record date": evaluation_date - timedelta(days=200)},
+            {"Record type": "Condition", "Record date": evaluation_date},
+            {"Record type": "Encounter", "Record date": evaluation_date - timedelta(days=15)},
+            {"Record type": "Encounter", "Record date": evaluation_date + timedelta(days=1)},
+        ]
+        current_features = {
+            "GENDER": "F",
+            "age_at_encounter": 40.0,
+            "ENCOUNTERCLASS": "outpatient",
+            "encounter_code": "DEMO",
+            "reason_code": "NO_REASON_RECORDED",
+        }
+        feature_columns = list(current_features)
+        feature_columns.extend(["patient_total_encounters", "days_since_last_encounter"])
+        for feature_type in RECORD_TYPE_TO_FEATURE.values():
+            feature_columns.append(f"days_since_{feature_type}_last")
+            feature_columns.extend(
+                f"prior_{feature_type}_count_{window}d"
+                for window in [7, 30, 90, 180]
+            )
+
+        features = build_model_features(
+            current_features,
+            records,
+            evaluation_date,
+            feature_columns,
+        )
+
+        self.assertEqual(features["prior_conditions_count_7d"], 1.0)
+        self.assertEqual(features["prior_conditions_count_30d"], 2.0)
+        self.assertEqual(features["prior_conditions_count_180d"], 2.0)
+        self.assertEqual(features["days_since_conditions_last"], 7)
+        self.assertEqual(features["patient_total_encounters"], 1)
+        self.assertEqual(features["days_since_last_encounter"], 15)
+        self.assertEqual(features["prior_allergies_count_30d"], 0.0)
+        self.assertEqual(features["days_since_allergies_last"], -1)
+
+    def test_history_agent_returns_reviewable_records_with_source_and_model(self):
+        from datetime import date
+        from types import SimpleNamespace
+
+        from src.history_agent import (
+            ExtractedHistoryRecord,
+            HistoryExtraction,
+            extract_history_records,
+        )
+
+        class FakeResponses:
+            def parse(self, **kwargs):
+                self.kwargs = kwargs
+                return SimpleNamespace(
+                    output_parsed=HistoryExtraction(
+                        records=[
+                            ExtractedHistoryRecord(
+                                record_type="Condition",
+                                record_date=date(2022, 3, 14),
+                                details="asthma",
+                                source_text="Asthma was diagnosed on 2022-03-14.",
+                                confidence=0.98,
+                            )
+                        ],
+                        clarifying_questions=[],
+                    )
+                )
+
+        responses = FakeResponses()
+        result = extract_history_records(
+            "Asthma was diagnosed on 2022-03-14.",
+            client=SimpleNamespace(responses=responses),
+            model="test-extraction-model",
+        )
+
+        self.assertEqual(result["model"], "test-extraction-model")
+        self.assertEqual(result["records"][0]["Record type"], "Condition")
+        self.assertEqual(result["records"][0]["Record date"], date(2022, 3, 14))
+        self.assertIn("2022-03-14", result["records"][0]["Source text"])
+        self.assertEqual(responses.kwargs["model"], "test-extraction-model")
+
+    def test_history_agent_rejects_unverifiable_source_quote(self):
+        from datetime import date
+        from types import SimpleNamespace
+
+        from src.history_agent import ExtractedHistoryRecord, HistoryExtraction, extract_history_records
+
+        fake_response = SimpleNamespace(
+            output_parsed=HistoryExtraction(
+                records=[
+                    ExtractedHistoryRecord(
+                        record_type="Condition",
+                        record_date=date(2022, 3, 14),
+                        details="asthma",
+                        source_text="COPD diagnosed in 2019.",
+                        confidence=0.9,
+                    )
+                ],
+                clarifying_questions=[],
+            )
+        )
+        fake_client = SimpleNamespace(
+            responses=SimpleNamespace(parse=lambda **kwargs: fake_response)
+        )
+
+        with self.assertRaisesRegex(ValueError, "source quote"):
+            extract_history_records(
+                "Asthma was diagnosed.",
+                client=fake_client,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
