@@ -19,6 +19,16 @@ from src.history_agent import extract_history_records, history_model_name
 from src.manual_features import build_model_features
 from src.model_artifact import load_model_artifact, predict_workflows
 
+try:
+    from workflow_ml.config import LABELS
+    from workflow_ml.features import load_table
+    from workflow_ml.serving import BUNDLE_PATH, evidence, load_bundle
+except ImportError:  # without the workflow_v2 package the app still runs on the original model
+    BUNDLE_PATH = None
+
+ENSEMBLE = "Ensemble v2 · mean F1 0.789"
+BASELINE = "Original Random Forest · mean F1 0.536"
+
 
 st.set_page_config(
     page_title="Clinical Workflow Desk",
@@ -67,6 +77,32 @@ TASK_STATUSES = [
 def get_model() -> dict[str, object]:
     return load_model_artifact(MODEL_ARTIFACT_PATH)
 
+
+@st.cache_resource
+def get_ensemble():
+    return load_bundle(BUNDLE_PATH)
+
+
+@st.cache_resource(show_spinner="Scoring the synthetic patients the model has never seen...")
+def get_demo_encounters() -> pd.DataFrame:
+    """Features, live ensemble predictions and recorded outcomes for the held-out patients."""
+    bundle = get_ensemble()
+    table = load_table()
+    rows = table.index[table["patient_id"].isin(bundle.demo_patients)].to_numpy()
+    demo = pd.concat([table.iloc[rows], bundle.predict(table, rows)], axis=1)
+    encounter_types = bundle.vocabulary.categories["enc_type"]
+    demo["encounter_type"] = [encounter_types[code] for code in demo["enc_type"]]
+    demo["suggested"] = demo[[f"{label}_predicted" for label in LABELS]].any(axis=1)
+    return demo
+
+
+def available_models() -> list[str]:
+    models = []
+    if BUNDLE_PATH is not None and BUNDLE_PATH.exists():
+        models.append(ENSEMBLE)
+    if MODEL_ARTIFACT_PATH.exists():
+        models.append(BASELINE)
+    return models
 
 
 
@@ -169,28 +205,55 @@ def render_manual_inputs() -> tuple[dict[str, object], str]:
     )
 
 
-def make_prediction_case(
-    reference: str,
-    features: dict[str, object],
-    artifact: dict[str, object],
-    history_records: list[dict[str, object]],
-) -> dict[str, object]:
+def baseline_predictions(
+    features: dict[str, object], artifact: dict[str, object]
+) -> dict[str, dict[str, object]]:
     prediction = predict_workflows(features, artifact).iloc[0]
-    predictions = {}
-    for target in artifact["target_columns"]:
-        predictions[target] = {
+    return {
+        target: {
             "score": float(prediction[f"{target}_score"]),
             "threshold": float(artifact["thresholds"][target]),
             "proposed": bool(prediction[f"{target}_predicted"]),
-            "signals": get_top_signals(artifact, target),
+            "signals": [
+                f"{name.replace('_', ' ')} ({importance:.0%})"
+                for name, importance in get_top_signals(artifact, target)
+            ],
         }
+        for target in artifact["target_columns"]
+    }
+
+
+def ensemble_predictions(
+    prediction: pd.Series, features: pd.Series, bundle
+) -> dict[str, dict[str, object]]:
+    return {
+        label: {
+            "score": float(prediction[f"{label}_score"]),
+            "threshold": bundle.thresholds[label],
+            "proposed": bool(prediction[f"{label}_predicted"]),
+            "signals": evidence(features, label),
+        }
+        for label in LABELS
+    }
+
+
+def make_case(
+    reference: str,
+    model_name: str,
+    predictions: dict[str, dict[str, object]],
+    features: dict[str, object],
+    history_records: list[dict[str, object]],
+    actual: dict[str, bool] | None = None,
+) -> dict[str, object]:
     return {
         "id": uuid.uuid4().hex,
         "reference": reference,
         "created": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "model": model_name,
         "features": features,
         "history_records": history_records,
         "predictions": predictions,
+        "actual": actual,
         "status": "Awaiting underwriter review",
         "decision_note": "",
     }
@@ -237,11 +300,85 @@ def render_overview() -> None:
             right.caption(case["status"])
 
 
-def render_intake(artifact: dict[str, object]) -> None:
+def render_demo_intake(model_name: str) -> None:
+    """Pick a synthetic patient the ensemble never trained on and score one of their encounters."""
+    bundle = get_ensemble()
+    demo = get_demo_encounters()
+    st.caption(
+        f"{demo['patient_id'].nunique()} synthetic patients were held out of training. "
+        "The model scores them live, and the review page shows what was actually recorded afterwards."
+    )
+
+    visits = demo.groupby("patient_id").size()
+    patient = st.selectbox(
+        "Synthetic patient",
+        visits.index,
+        format_func=lambda patient_id: f"Patient {patient_id[:8]} · {visits[patient_id]} encounters",
+    )
+    encounters = demo[demo["patient_id"] == patient]
+    if st.toggle("Only encounters where the model suggests a workflow", value=True):
+        encounters = encounters[encounters["suggested"]]
+    if encounters.empty:
+        st.info("The model suggests no workflow for this patient. Turn the filter off or pick another patient.")
+        return
+
+    position = st.selectbox(
+        "Evaluation encounter",
+        encounters.index,
+        index=len(encounters) - 1,
+        format_func=lambda row: f"{demo.at[row, 't']:%Y-%m-%d} · {demo.at[row, 'encounter_type']}",
+    )
+    encounter = demo.loc[position]
+    earlier = demo[(demo["patient_id"] == patient) & (demo["t"] < encounter["t"])].tail(6)
+    left, right = st.columns([1, 2])
+    left.metric("Age at evaluation", f"{encounter['age']:.0f}")
+    left.metric("Earlier encounters", f"{encounter['n_previous']:.0f}")
+    right.markdown("**Most recent earlier encounters**")
+    right.dataframe(
+        pd.DataFrame({"Date": earlier["t"].dt.strftime("%Y-%m-%d"), "Encounter": earlier["encounter_type"]}),
+        hide_index=True,
+        width="stretch",
+    )
+
+    if st.button("Generate workflow suggestions", type="primary", width="stretch", key="demo_generate"):
+        case = make_case(
+            f"DEMO-{patient[:6]}-{encounter['t']:%Y%m%d}",
+            model_name,
+            ensemble_predictions(encounter, encounter, bundle),
+            {
+                "patient": patient[:8],
+                "evaluation date": f"{encounter['t']:%Y-%m-%d}",
+                "encounter": encounter["encounter_type"],
+                "age": f"{encounter['age']:.0f}",
+                "earlier encounters": f"{encounter['n_previous']:.0f}",
+            },
+            [],
+            actual={label: bool(encounter[label]) for label in LABELS},
+        )
+        cases().insert(0, case)
+        st.success(f"Application {case['reference']} is ready for underwriter review.")
+
+
+def render_intake(model_name: str) -> None:
     st.title("New application")
-    st.caption("Enter an applicant profile and a free-text medical history.")
+    st.caption(f"Model: {model_name}")
     st.warning("Showcase only: use synthetic data. Do not enter real policyholder identifiers or health information.")
 
+    if model_name == ENSEMBLE:
+        demo_tab, manual_tab = st.tabs(["Synthetic patient", "Manual entry"])
+        with demo_tab:
+            render_demo_intake(model_name)
+        with manual_tab:
+            st.caption(
+                "Hand-entered histories are much shorter than the records the model was trained on, "
+                "so treat these scores as illustrative."
+            )
+            render_manual_intake(model_name)
+    else:
+        render_manual_intake(model_name)
+
+
+def render_manual_intake(model_name: str) -> None:
     with st.form("application_intake"):
         reference = st.text_input("Application reference", placeholder="DEMO-1001")
         current_features, history_text = render_manual_inputs()
@@ -260,6 +397,7 @@ def render_intake(artifact: dict[str, object]) -> None:
             st.error("Evaluation date cannot be in the future.")
         else:
             evaluation_date = current_features.pop("evaluation_date")
+            profile = dict(current_features)
             current_features.pop("date_of_birth")
             prior_total_encounters = int(current_features.pop("prior_total_encounters"))
             step = "Starting"
@@ -286,24 +424,41 @@ def render_intake(artifact: dict[str, object]) -> None:
                     else:
                         st.write("No medical history text entered; skipping extraction.")
 
-                    step = "Step 3/4: Computing 7/30/90 day model features"
+                    step = "Step 3/4: Computing model features from the dated history"
                     st.write(step)
-                    feature_values = build_model_features(
-                        current_features,
-                        history_records,
-                        evaluation_date,
-                        artifact["feature_columns"],
-                    )
-                    feature_values["patient_total_encounters"] = max(
-                        int(feature_values["patient_total_encounters"]), prior_total_encounters
-                    )
+                    if model_name == ENSEMBLE:
+                        bundle = get_ensemble()
+                        prediction, model_features = bundle.predict_application(
+                            profile, history_records, evaluation_date
+                        )
+                        step = "Step 4/4: Running the prediction model"
+                        st.write(step)
+                        predictions = ensemble_predictions(prediction, model_features, bundle)
+                        feature_values = {
+                            **{name: str(value) for name, value in profile.items()},
+                            "dated history records": len(history_records),
+                            "earlier encounters derived": f"{model_features['n_previous']:.0f}",
+                        }
+                    else:
+                        artifact = get_model()
+                        feature_values = build_model_features(
+                            current_features,
+                            history_records,
+                            evaluation_date,
+                            artifact["feature_columns"],
+                        )
+                        feature_values["patient_total_encounters"] = max(
+                            int(feature_values["patient_total_encounters"]), prior_total_encounters
+                        )
+                        step = "Step 4/4: Running the prediction model"
+                        st.write(step)
+                        predictions = baseline_predictions(feature_values, artifact)
 
-                    step = "Step 4/4: Running the prediction model"
-                    st.write(step)
-                    case = make_prediction_case(
+                    case = make_case(
                         reference.strip(),
+                        model_name,
+                        predictions,
                         feature_values,
-                        artifact,
                         history_records,
                     )
                 except Exception as error:
@@ -313,6 +468,31 @@ def render_intake(artifact: dict[str, object]) -> None:
                     status.update(label="Workflow suggestions ready", state="complete", expanded=False)
                     cases().insert(0, case)
                     st.success(f"Application {case['reference']} is ready for underwriter review.")
+
+
+def render_scores(case: dict[str, object]) -> None:
+    """All four categories at a glance; for synthetic patients, also what was recorded afterwards."""
+    actual = case.get("actual")
+    rows = []
+    for label, result in case["predictions"].items():
+        row = {
+            "Workflow": WORKFLOW_INFO[label]["title"],
+            "Model score": round(result["score"], 3),
+            "Threshold": round(result["threshold"], 3),
+            "Model suggests": "Yes" if result["proposed"] else "No",
+        }
+        if actual is not None:
+            happened = actual[label]
+            row["Recorded within 30 days"] = "Yes" if happened else "No"
+            row["Outcome"] = (
+                "Correct" if happened == result["proposed"]
+                else "Missed" if happened else "False alarm"
+            )
+        rows.append(row)
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    if actual is not None:
+        correct = sum(actual[label] == result["proposed"] for label, result in case["predictions"].items())
+        st.caption(f"{correct} of {len(rows)} categories match what was recorded for this synthetic patient.")
 
 
 def render_review() -> None:
@@ -333,7 +513,9 @@ def render_review() -> None:
     )
     case = pending_by_id[selected_case_id]
     st.subheader(case["reference"])
+    st.caption(f"Model: {case['model']}")
     st.caption("Model outputs are workflow-category signals derived from synthetic future-event labels, not procedure orders.")
+    render_scores(case)
 
     proposed_labels = [
         label for label, result in case["predictions"].items() if result["proposed"]
@@ -353,13 +535,13 @@ def render_review() -> None:
             title_column.markdown(f"**{title}**")
             score_column.metric("Model score", f"{result['score']:.3f}", help="A model score, not a calibrated probability.")
             st.caption(f"Threshold: {result['threshold']:.3f}. The category is surfaced because its score met or exceeded this threshold.")
-            signals = result["signals"]
-            signal_text = ", ".join(
-                f"{name.replace('_', ' ')} ({importance:.0%})"
-                for name, importance in signals
-            ) or "No feature importance available"
-            st.write(f"**Most influential model features overall:** {signal_text}")
-            st.caption("These are global training-set signals, not a case-specific explanation or evidence of medical necessity.")
+            signal_text = ", ".join(result["signals"]) or "No signal available"
+            if case["model"] == ENSEMBLE:
+                st.write(f"**In this patient's history:** {signal_text}")
+                st.caption("These are feature values for this case, not evidence of medical necessity.")
+            else:
+                st.write(f"**Most influential model features overall:** {signal_text}")
+                st.caption("These are global training-set signals, not a case-specific explanation or evidence of medical necessity.")
 
     with st.expander("Submitted model inputs"):
         st.dataframe(
@@ -482,19 +664,25 @@ def main() -> None:
         label_visibility="collapsed",
     )
     st.sidebar.divider()
-    st.sidebar.caption("Synthetic data only · No clinical or underwriting decisions")
-
-    try:
-        artifact = get_model()
-    except FileNotFoundError:
-        st.error(f"Model artifact not found: {MODEL_ARTIFACT_PATH}")
-        st.code("python src\\build_model_table.py\npython src\\export_model.py\nstreamlit run app.py", language="powershell")
+    models = available_models()
+    if not models:
+        st.error("No trained model found.")
+        st.code(
+            "python -m workflow_ml.serving      # ensemble v2\n"
+            "python src\\build_model_table.py\npython src\\export_model.py   # original model\n"
+            "streamlit run app.py",
+            language="powershell",
+        )
         st.stop()
+    st.sidebar.caption("Prediction model")
+    model_name = st.sidebar.radio("Prediction model", models, label_visibility="collapsed")
+    st.sidebar.divider()
+    st.sidebar.caption("Synthetic data only · No clinical or underwriting decisions")
 
     if page == "Overview":
         render_overview()
     elif page == "New application":
-        render_intake(artifact)
+        render_intake(model_name)
     elif page == "Underwriter review":
         render_review()
     else:

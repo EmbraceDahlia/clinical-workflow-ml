@@ -25,6 +25,24 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 The first `train` run takes about 15 minutes on an Apple M1; later runs reuse cached scores.
 Add `--refresh` to rebuild the features and retrain.
 
+## Serve the model
+
+```bash
+.venv/bin/python -m workflow_ml.serving   # writes artifacts/model/workflow_model.joblib (about 4 minutes)
+.venv/bin/streamlit run ../app.py         # the showcase app, with both models selectable
+```
+
+The bundle is trained on four patient folds; the fifth is kept out so the app can
+demonstrate live predictions on unseen patients (it reproduces that fold's 0.758 mean F1).
+
+```python
+from workflow_ml.serving import load_bundle
+
+bundle = load_bundle()
+bundle.predict(table, rows)                                      # rows of the feature table
+bundle.predict_application(profile, history_records, date)       # a hand-entered applicant
+```
+
 ## Method
 
 | Step | Algorithm | Covered in class |
@@ -73,6 +91,8 @@ src/workflow_ml/
   genetic.py     genetic algorithm and blend
   evaluate.py    thresholds and metrics
   train.py       full pipeline and report
+  serving.py     export, load and predict with the trained bundle
+  intake.py      turn a hand-entered application into model input
 notebooks/       01 data → 07 final evaluation
 tests/           label parity, leakage
 ```
