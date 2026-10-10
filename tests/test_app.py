@@ -51,6 +51,22 @@ class AppTests(unittest.TestCase):
         case = app.session_state["applications"][0]
         self.assertTrue(all(0 <= result["score"] <= 1 for result in case["predictions"].values()))
 
+    def test_every_example_fills_the_form_with_valid_choices(self):
+        from src.demo_examples import EXAMPLES
+
+        app = AppTest.from_file(APP, default_timeout=180).run()
+        app.sidebar.radio[0].set_value("New application")
+        app.run()
+        for name, example in EXAMPLES.items():
+            app.selectbox(key="example").set_value(name).run()
+            self.assertFalse(app.exception, name)
+            self.assertEqual(app.session_state["medical_history_text"], example["history"])
+            self.assertEqual(app.selectbox(key="visit_reason").value, example["reason"])
+            self.assertTrue(app.selectbox(key="visit_type").value.startswith(example["visit"][0]))
+
+        app.selectbox(key="example").set_value("Blank form").run()
+        self.assertEqual(app.session_state["medical_history_text"], "")
+
     @unittest.skipUnless(MODEL_ARTIFACT_PATH.exists(), "original model not exported")
     def test_original_model_still_scores_a_manual_application(self):
         app = submit_manual_application(open_page("Original", "New application"))

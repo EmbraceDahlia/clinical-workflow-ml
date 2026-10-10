@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.config import MODEL_ARTIFACT_PATH
+from src.config import DATA_DIR, MODEL_ARTIFACT_PATH
+from src.demo_examples import EVALUATION_DATE, EXAMPLES
 from src.history_agent import extract_history_records, history_model_name
 from src.manual_features import build_model_features
 from src.model_artifact import load_model_artifact, predict_workflows
@@ -137,41 +138,102 @@ def get_top_signals(artifact: dict[str, object], target: str) -> list[tuple[str,
     ]
 
 
+BLANK_FORM = "Blank form"
+NO_REASON = "No reason recorded"
+FORM_DEFAULTS = {
+    "reference": "",
+    "date_of_birth": date(1985, 1, 1),
+    "gender": "F",
+    "evaluation_date": date.today(),
+    "visit_type": "General examination of patient (procedure) · wellness",
+    "visit_reason": NO_REASON,
+    "prior_total_encounters": 0,
+    "medical_history_text": "",
+}
+
+
+@st.cache_data
+def visit_options() -> tuple[dict[str, dict[str, object]], dict[str, str]]:
+    """Visit types and reasons found in the training data, most common first."""
+    encounters = pd.read_csv(DATA_DIR / "encounters.csv")
+    by_type = encounters.groupby(["DESCRIPTION", "ENCOUNTERCLASS"])["CODE"].agg(["size", "first"])
+    visits = {
+        f"{description} · {encounter_class}": {
+            "encounter_code": int(row["first"]),
+            "encounter_description": description,
+            "ENCOUNTERCLASS": encounter_class,
+        }
+        for (description, encounter_class), row in by_type.sort_values("size", ascending=False).iterrows()
+    }
+    by_reason = encounters.groupby("REASONDESCRIPTION")["REASONCODE"].agg(["size", "first"])
+    # The original model stores reason codes the way pandas printed them, e.g. "72892002.0".
+    reasons = {NO_REASON: "NO_REASON_RECORDED"} | {
+        description: str(float(row["first"]))
+        for description, row in by_reason.sort_values("size", ascending=False).iterrows()
+    }
+    return visits, reasons
+
+
+def apply_example() -> None:
+    """Fill the form from the chosen example, or clear it."""
+    example = EXAMPLES.get(st.session_state["example"])
+    if example is None:
+        st.session_state.update(FORM_DEFAULTS)
+        return
+    description, encounter_class = example["visit"]
+    st.session_state.update(
+        {
+            "reference": f"DEMO-{list(EXAMPLES).index(st.session_state['example']) + 1:03d}",
+            "date_of_birth": example["date_of_birth"],
+            "gender": example["gender"],
+            "evaluation_date": EVALUATION_DATE,
+            "visit_type": f"{description} · {encounter_class}",
+            "visit_reason": example["reason"],
+            "prior_total_encounters": example["prior_total_encounters"],
+            "medical_history_text": example["history"],
+        }
+    )
+
+
 def render_manual_inputs() -> tuple[dict[str, object], str]:
+    visits, reasons = visit_options()
     st.subheader("Applicant and evaluation")
     first_row = st.columns([1.4, 1])
     applicant_columns = first_row[0].columns(2)
     with applicant_columns[0]:
         date_of_birth = st.date_input(
             "Date of birth",
-            value=date(1985, 1, 1),
+            key="date_of_birth",
             min_value=date(1900, 1, 1),
             max_value=date.today(),
         )
         gender = st.selectbox(
             "Gender",
             ["F", "M", "Other"],
+            key="gender",
             format_func=lambda value: {"F": "Female", "M": "Male", "Other": "Other / not recorded"}[value],
         )
-        encounter_class = st.text_input("Evaluation type", "outpatient")
-    with applicant_columns[1]:
-        evaluation_date = st.date_input("Evaluation date", value=date.today())
-        encounter_code = st.number_input(
-            "Encounter code (numeric)",
-            min_value=0,
-            max_value=9_999_999_999,
-            value=410620009,
-            step=1,
-            format="%d",
-        )
-        reason_code = st.text_input("Reason code", "NO_REASON_RECORDED")
         prior_total_encounters = st.number_input(
             "Total prior encounters",
+            key="prior_total_encounters",
             min_value=0,
             max_value=100_000,
-            value=0,
             step=1,
-            help="Lifetime encounter count; the model relies on it heavily. The larger of this and the extracted encounters is used.",
+            help="Lifetime encounter count; the original model relies on it heavily. The larger of this and the extracted encounters is used.",
+        )
+    with applicant_columns[1]:
+        evaluation_date = st.date_input("Evaluation date", key="evaluation_date")
+        visit_type = st.selectbox(
+            "Visit type",
+            list(visits),
+            key="visit_type",
+            help="The kind of encounter being evaluated. Type to search.",
+        )
+        visit_reason = st.selectbox(
+            "Reason for visit",
+            list(reasons),
+            key="visit_reason",
+            help="Type to search.",
         )
     with first_row[1]:
         st.text_area(
@@ -179,7 +241,7 @@ def render_manual_inputs() -> tuple[dict[str, object], str]:
             key="medical_history_text",
             max_chars=12000,
             height=220,
-            placeholder="Enter a synthetic medical history. The 7, 30 and 90 day model inputs are extracted automatically.",
+            placeholder="Enter a synthetic medical history. The dated records are extracted automatically.",
             help=f"Extraction model: {history_model_name()}. Text is sent only when you generate suggestions.",
         )
 
@@ -192,9 +254,8 @@ def render_manual_inputs() -> tuple[dict[str, object], str]:
     current_features = {
         "GENDER": gender,
         "age_at_encounter": age_at_evaluation,
-        "ENCOUNTERCLASS": encounter_class,
-        "encounter_code": encounter_code,
-        "reason_code": reason_code,
+        **visits[visit_type],
+        "reason_code": reasons[visit_reason],
         "date_of_birth": date_of_birth,
         "prior_total_encounters": prior_total_encounters,
     }
@@ -379,8 +440,20 @@ def render_intake(model_name: str) -> None:
 
 
 def render_manual_intake(model_name: str) -> None:
+    for name, value in FORM_DEFAULTS.items():
+        st.session_state.setdefault(name, value)
+    example = st.selectbox(
+        "Start from an example",
+        [BLANK_FORM, *EXAMPLES],
+        key="example",
+        on_change=apply_example,
+        help="Fills every field with a synthetic applicant. You can still edit anything before generating.",
+    )
+    if example in EXAMPLES:
+        st.caption(f"{EXAMPLES[example]['summary']} {EXAMPLES[example]['expected']}")
+
     with st.form("application_intake"):
-        reference = st.text_input("Application reference", placeholder="DEMO-1001")
+        reference = st.text_input("Application reference", key="reference", placeholder="DEMO-1001")
         current_features, history_text = render_manual_inputs()
         submitted = st.form_submit_button(
             "Generate workflow suggestions",

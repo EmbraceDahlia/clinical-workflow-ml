@@ -211,6 +211,11 @@ history is converted to Synthea-style records and passed through the same
 feature builder, but such short histories are outside what the model was
 trained on, so treat those scores as illustrative.
 
+**Manual entry** offers ready-made synthetic applicants under **Start from an
+example** (`src/demo_examples.py`). Choosing one fills every field, including the
+history text. Visit type and reason are picked from lists built from the
+training data, so the codes sent to the models are always valid.
+
 To enable background free-text extraction, configure the API key and model in
 the same PowerShell session before starting the app:
 
