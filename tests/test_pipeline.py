@@ -129,6 +129,65 @@ class PipelineTests(unittest.TestCase):
         estimator = make_base_estimator("linear_svm")
         self.assertTrue(hasattr(estimator, "decision_function"))
 
+    def test_saved_model_artifact_produces_workflow_predictions(self):
+        import tempfile
+        from pathlib import Path
+
+        import joblib
+
+        from src.evaluate_models import tune_thresholds
+        from src.model_artifact import load_model_artifact, predict_workflows
+        from src.preprocess import build_preprocessor
+        from src.train_baselines import train_model
+
+        features = pd.DataFrame(
+            {
+                "age_at_encounter": [20, 30, 40, 50, 60, 70, 25, 55],
+                "GENDER": ["F", "M", "F", "M", "F", "M", "F", "M"],
+            }
+        )
+        targets = pd.DataFrame(
+            {
+                target: [0, 1, 0, 1, 0, 1, 0, 1]
+                for target in TARGET_COLUMNS
+            }
+        )
+        feature_columns = list(features.columns)
+        preprocessor = build_preprocessor(features, feature_columns)
+        transformed = preprocessor.fit_transform(features)
+        model = train_model("random_forest", transformed, targets)
+        thresholds = tune_thresholds(
+            targets,
+            [estimator.predict_proba(transformed)[:, 1] for estimator in model.estimators_],
+            0.5,
+        )
+        artifact = {
+            "schema_version": 1,
+            "feature_columns": feature_columns,
+            "target_columns": TARGET_COLUMNS,
+            "thresholds": thresholds,
+            "preprocessor": preprocessor,
+            "model": model,
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact_path = Path(temp_dir) / "model.joblib"
+            joblib.dump(artifact, artifact_path)
+            loaded = load_model_artifact(artifact_path)
+            predictions = predict_workflows(features.iloc[:2], loaded)
+
+        self.assertEqual(len(predictions), 2)
+        self.assertIn("medical_exam_score", predictions.columns)
+        self.assertIn("medical_exam_predicted", predictions.columns)
+        self.assertTrue(predictions["medical_exam_predicted"].isin([True, False]).all())
+
+    def test_saved_model_rejects_missing_features(self):
+        from src.model_artifact import predict_workflows
+
+        artifact = {"feature_columns": ["age_at_encounter"]}
+        with self.assertRaisesRegex(ValueError, "Missing required model features"):
+            predict_workflows(pd.DataFrame({"GENDER": ["F"]}), artifact)
+
     def test_model_comparison_uses_supported_metrics(self):
         from src.compare_models import compare_models
 
