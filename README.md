@@ -192,6 +192,26 @@ python src\export_model.py
 streamlit run app.py
 ```
 
+### Use the ensemble model (workflow_v2) in the app
+
+The app offers two prediction models in the sidebar. The original Random Forest
+needs only the steps above. To add the ensemble (mean F1 0.789), install the
+`workflow_v2` package into the same environment and export its bundle once:
+
+```powershell
+python -m pip install -e workflow_v2
+python -m workflow_ml.serving
+streamlit run app.py
+```
+
+With the ensemble selected, **New application** has a **Synthetic patient** tab.
+It lists the synthetic patients that were held out of training, scores the chosen
+encounter live, and the review page shows what was actually recorded in the
+following 30 days. **Manual entry** also works with the ensemble: the dated
+history is converted to Synthea-style records and passed through the same
+feature builder, but such short histories are outside what the model was
+trained on, so treat those scores as illustrative.
+
 To enable background free-text extraction, configure the API key and model in
 the same PowerShell session before starting the app:
 
