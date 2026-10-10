@@ -285,6 +285,19 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(result["records"][0]["Record date"], date(2022, 3, 14))
         self.assertIn("2022-03-14", result["records"][0]["Source text"])
         self.assertEqual(responses.kwargs["model"], "test-extraction-model")
+        self.assertIs(responses.kwargs["text_format"], HistoryExtraction)
+        self.assertEqual(responses.kwargs["temperature"], 0)
+
+    def test_history_agent_prompt_names_every_record_type_and_the_evaluation_date(self):
+        from datetime import date
+
+        from src.history_agent import SYSTEM_PROMPT
+        from src.manual_features import RECORD_TYPES
+
+        prompt = SYSTEM_PROMPT.format(evaluation_date=date(2026, 10, 10))
+        for record_type in RECORD_TYPES:
+            self.assertIn(f"- {record_type}:", prompt)
+        self.assertIn("2026-10-10", prompt)
 
     def test_history_agent_rejects_unverifiable_source_quote(self):
         from datetime import date
@@ -316,6 +329,40 @@ class PipelineTests(unittest.TestCase):
                 client=fake_client,
             )
 
+    def test_history_agent_accepts_quote_with_different_spacing_and_retries_once(self):
+        from datetime import date
+        from types import SimpleNamespace
+
+        from src.history_agent import ExtractedHistoryRecord, HistoryExtraction, extract_history_records
+
+        def response(quote):
+            return SimpleNamespace(
+                output_parsed=HistoryExtraction(
+                    records=[
+                        ExtractedHistoryRecord(
+                            record_type="Condition",
+                            record_date=date(2022, 3, 14),
+                            details="asthma",
+                            source_text=quote,
+                            confidence=0.9,
+                        )
+                    ],
+                    clarifying_questions=[],
+                )
+            )
+
+        replies = iter([response("COPD was diagnosed."), response("asthma was diagnosed on 2022-03-14.")])
+        fake_client = SimpleNamespace(
+            responses=SimpleNamespace(parse=lambda **kwargs: next(replies))
+        )
+
+        result = extract_history_records(
+            "Asthma was\ndiagnosed on 2022-03-14.",
+            client=fake_client,
+        )
+
+        self.assertEqual(len(result["records"]), 1)
+        self.assertEqual(list(replies), [])
 
 if __name__ == "__main__":
     unittest.main()

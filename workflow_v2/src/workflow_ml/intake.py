@@ -4,6 +4,7 @@ The model was trained on Synthea records, so an application is rewritten as a on
 Synthea-style record set and passed through the same feature builder as the training data.
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from difflib import get_close_matches
@@ -25,6 +26,11 @@ RECORD_SOURCES = {
 }
 EVENT_COLUMNS = ["PATIENT", "ENCOUNTER", "DATE", "DESCRIPTION"]
 DEFAULT_CLASS = "ambulatory"
+# Words too generic to identify a record on their own.
+FILLER_WORDS = {
+    "of", "the", "a", "an", "and", "for", "in", "with", "procedure", "test", "disorder",
+    "finding", "encounter", "visit", "vaccine", "panel", "blood",
+}
 
 
 @dataclass(frozen=True)
@@ -56,12 +62,47 @@ def build_catalog(raw: dict[str, pd.DataFrame]) -> Catalog:
     )
 
 
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", text.lower())) - FILLER_WORDS
+
+
 def _known_name(text: object, known: Sequence[str]) -> str:
-    """The training-data description closest to `text`, or `text` itself when nothing is close."""
+    """The training-data description closest to `text`, or `text` itself when nothing is close.
+
+    Free text rarely repeats a description exactly ("annual general examination" for
+    "General examination of patient (procedure)"), so names are compared by shared words.
+    """
     text = str(text or "").strip()
     by_lower = {name.lower(): name for name in known}
-    match = get_close_matches(text.lower(), list(by_lower), n=1, cutoff=0.6)
-    return by_lower[match[0]] if match else text
+    close = get_close_matches(text.lower(), list(by_lower), n=1, cutoff=0.6)
+    if close:
+        return by_lower[close[0]]
+
+    words = _words(text)
+    best, best_share = text, 0.0
+    for name in known:
+        name_words = _words(name)
+        shared = len(words & name_words)
+        share = max(shared / max(len(words), 1), shared / max(len(name_words), 1))
+        if share > best_share:
+            best, best_share = name, share
+    return best if best_share >= 0.5 else text
+
+
+def _visit_name(records: pd.DataFrame, catalog: Catalog) -> str:
+    """Encounter type of one day's records.
+
+    Extraction often files "annual general examination" as a procedure rather than an
+    encounter, so any record that names a known encounter type decides the visit.
+    """
+    known = catalog.descriptions["encounters"]
+    is_encounter = records["Record type"] == "Encounter"
+    stated = list(records.loc[is_encounter, "Details or code"])
+    for text in [*stated, *records.loc[~is_encounter, "Details or code"]]:
+        name = _known_name(text, known)
+        if name in known:
+            return name
+    return str(stated[0]) if stated else catalog.usual_encounter[DEFAULT_CLASS]
 
 
 def _events(rows: list[dict[str, object]]) -> pd.DataFrame:
@@ -88,10 +129,14 @@ def application_to_raw(
     history["date"] = pd.to_datetime(history["Record date"], errors="coerce").dt.normalize()
     history = history[history["date"] < evaluation]
 
-    code = str(profile.get("encounter_code", ""))
-    description, usual_class = catalog.encounter_by_code.get(
-        code, (catalog.usual_encounter[DEFAULT_CLASS], DEFAULT_CLASS)
-    )
+    description = profile.get("encounter_description")
+    if description:
+        usual_class = catalog.class_of_encounter.get(description, DEFAULT_CLASS)
+    else:
+        description, usual_class = catalog.encounter_by_code.get(
+            str(profile.get("encounter_code", "")),
+            (catalog.usual_encounter[DEFAULT_CLASS], DEFAULT_CLASS),
+        )
     encounters = [
         {
             "Id": CURRENT_ENCOUNTER_ID, "PATIENT": PATIENT_ID, "DATE": evaluation,
@@ -103,11 +148,7 @@ def application_to_raw(
     visit_ids: dict[pd.Timestamp, str] = {}
     for day, records in history.groupby("date"):
         visit_ids[day] = f"visit-{day:%Y%m%d}"
-        stated = records.loc[records["Record type"] == "Encounter", "Details or code"]
-        name = (
-            _known_name(stated.iloc[0], catalog.descriptions["encounters"])
-            if len(stated) else catalog.usual_encounter[DEFAULT_CLASS]
-        )
+        name = _visit_name(records, catalog)
         encounters.append(
             {
                 "Id": visit_ids[day], "PATIENT": PATIENT_ID, "DATE": day,
