@@ -12,6 +12,7 @@ __pycache__/
 
 # Generated data and model artifacts
 model_table.csv
+models/
 reports/
 *.joblib
 *.pkl

@@ -195,11 +195,10 @@ streamlit run app.py
 ### Use the ensemble model (workflow_v2) in the app
 
 The app offers two prediction models in the sidebar. The original Random Forest
-needs only the steps above. To add the ensemble (mean F1 0.789), install the
-`workflow_v2` package into the same environment and export its bundle once:
+needs only the steps above. To add the ensemble (mean F1 0.789), export its
+bundle once (`requirements.txt` already installs the `workflow_v2` package):
 
 ```powershell
-python -m pip install -e workflow_v2
 python -m workflow_ml.serving
 streamlit run app.py
 ```
