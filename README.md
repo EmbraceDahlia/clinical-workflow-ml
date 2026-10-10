@@ -149,6 +149,37 @@ The generated artifacts are:
 These outputs are intentionally ignored by Git. `train_baselines.py` provides
 the model factory used by the pipeline and does not need to be run separately.
 
+## Export a Model for an Application
+
+To create a reusable Longitudinal Random Forest model bundle, build the feature
+table and run:
+
+```powershell
+python src\build_model_table.py
+python src\export_model.py
+```
+
+This writes `models/longitudinal_random_forest.joblib`. The bundle contains the
+fitted preprocessing steps, classifier, expected feature columns, and
+validation-tuned threshold for each workflow label. It is intentionally ignored
+by Git; regenerate it from the project data and installed dependencies when
+setting up another environment.
+
+An application can load the bundle once at startup and predict from a row or
+DataFrame containing the same longitudinal input features:
+
+```python
+from src.model_artifact import load_model_artifact, predict_workflows
+
+model = load_model_artifact()
+prediction = predict_workflows(feature_row, model)
+```
+
+The result contains one score and one thresholded prediction column per label.
+The input must include the model's longitudinal history features; the model
+does not derive those history features from raw EHR records. These predictions
+are for a synthetic-data demonstration, not clinical decision-making.
+
 ## Future Work
 
 Future experiments will investigate imbalance-aware methods to improve the
