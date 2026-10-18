@@ -104,7 +104,7 @@ tests/           label parity, leakage
 
 Mean F1 across the four labels, out-of-fold over all 1,171 patients (53,346 encounters).
 
-| Model | All patients | Without the 3 largest patients | Mean ± std over folds |
+| Model | All patients | Without the 4 largest patients | Mean ± std over folds |
 | --- | ---: | ---: | ---: |
 | Original pipeline (reported) | 0.536 | – | – |
 | MLP | 0.606 | 0.525 | 0.587 ± 0.064 |
@@ -128,7 +128,7 @@ final model does not use them; the ablation is in notebook 04.
 
 ## Limitations
 
-- Three patients have 1,500–2,000 encounters each and hold most `instrument_test`
+- Four patients have more than 800 encounters each (826 to 2,006) and hold most `instrument_test`
   positives. Without them that label drops to about 0.58 F1 and the mean to 0.68.
 - Scores differ by fold (0.64 to 0.82) for the same reason, so a single train/test split
   would be unreliable on this dataset.
